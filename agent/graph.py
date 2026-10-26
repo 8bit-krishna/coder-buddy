@@ -1,3 +1,5 @@
+import os
+
 from dotenv import load_dotenv
 from langchain.globals import set_verbose, set_debug
 from langchain_groq.chat_models import ChatGroq
@@ -9,10 +11,16 @@ from agent.prompts import *
 from agent.states import *
 from agent.tools import write_file, read_file, get_current_directory, list_files
 
-_ = load_dotenv()
+load_dotenv()
 
-set_debug(True)
-set_verbose(True)
+# Avoid logging prompts and file contents by default. Enable locally only when debugging.
+set_debug(False)
+set_verbose(False)
+
+if not os.getenv("GROQ_API_KEY"):
+    raise RuntimeError(
+        "GROQ_API_KEY is missing. Add it to your local .env file before starting Coder Buddy."
+    )
 
 llm = ChatGroq(model="openai/gpt-oss-120b")
 
@@ -35,7 +43,7 @@ def architect_agent(state: dict) -> dict:
         architect_prompt(plan=plan.model_dump_json())
     )
     if resp is None:
-        raise ValueError("Planner did not return a valid response.")
+        raise ValueError("Architect did not return a valid response.")
 
     resp.plan = plan
     print(resp.model_dump_json())
@@ -66,8 +74,27 @@ def coder_agent(state: dict) -> dict:
     coder_tools = [read_file, write_file, list_files, get_current_directory]
     react_agent = create_react_agent(llm, coder_tools)
 
-    react_agent.invoke({"messages": [{"role": "system", "content": system_prompt},
-                                     {"role": "user", "content": user_prompt}]})
+    # Exceptions propagate, so the task index is not advanced on failed invocation.
+    result = react_agent.invoke(
+        {
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+        }
+    )
+
+    messages = result.get("messages", [])
+    wrote_file = any(
+        getattr(message, "name", None) == "write_file"
+        and str(getattr(message, "content", "")).startswith("WROTE:")
+        for message in messages
+    )
+    if not wrote_file:
+        raise RuntimeError(
+            f"Coder agent did not confirm writing {current_task.filepath}; "
+            "the task was not marked complete."
+        )
 
     coder_state.current_step_idx += 1
     return {"coder_state": coder_state}
@@ -84,12 +111,15 @@ graph.add_edge("architect", "coder")
 graph.add_conditional_edges(
     "coder",
     lambda s: "END" if s.get("status") == "DONE" else "coder",
-    {"END": END, "coder": "coder"}
+    {"END": END, "coder": "coder"},
 )
 
 graph.set_entry_point("planner")
 agent = graph.compile()
+
 if __name__ == "__main__":
-    result = agent.invoke({"user_prompt": "Build a colourful modern todo app in html css and js"},
-                          {"recursion_limit": 100})
+    result = agent.invoke(
+        {"user_prompt": "Build a colourful modern todo app in html css and js"},
+        {"recursion_limit": 100},
+    )
     print("Final State:", result)
