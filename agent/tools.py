@@ -1,15 +1,16 @@
-import pathlib
+from pathlib import Path
 import subprocess
 from typing import Tuple
 
 from langchain_core.tools import tool
 
-PROJECT_ROOT = pathlib.Path.cwd() / "generated_project"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent / "generated_project"
 
 
-def safe_path_for_project(path: str) -> pathlib.Path:
+def safe_path_for_project(path: str) -> Path:
     p = (PROJECT_ROOT / path).resolve()
-    if PROJECT_ROOT.resolve() not in p.parents and PROJECT_ROOT.resolve() != p.parent and PROJECT_ROOT.resolve() != p:
+    root = PROJECT_ROOT.resolve()
+    if p != root and root not in p.parents:
         raise ValueError("Attempt to write outside project root")
     return p
 

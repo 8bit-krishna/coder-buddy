@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+:root {
+  color-scheme: dark;
+  --bg: #080b14;
+  --panel: rgba(16, 22, 37, .92);
+  --cyan: #36f5f0;
+  --pink: #ff43b6;
+  --yellow: #ffe66d;
+  --white: #f5fbff;
+  --muted: #a7b3c9;
+  --line: rgba(87, 243, 245, .25);
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; margin: 0; }
+body { min-height: 100vh; overflow-x: hidden; background: var(--bg); color: var(--white); font-family: 'Rajdhani', sans-serif; }
+button, input { font: inherit; }
+button { color: inherit; }
+main { position: relative; z-index: 1; min-height: 100vh; }
+.city-glow { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 18% 45%, rgba(255, 67, 182, .14), transparent 35%), radial-gradient(ellipse at 84% 22%, rgba(54, 245, 240, .13), transparent 32%), linear-gradient(180deg, #0a0d18, #080b14 78%); }
+.screen { display: none; min-height: 100vh; padding: 28px 20px; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.screen.active { display: flex; }
+.start-card, .pause-card { width: min(100%, 480px); padding: clamp(28px, 6vw, 54px); border: 1px solid var(--line); border-radius: 22px; background: var(--panel); box-shadow: 0 0 60px rgba(54, 245, 240, .08), 0 24px 80px rgba(0, 0, 0, .38); backdrop-filter: blur(14px); }
+.eyebrow { margin: 0 0 12px; color: var(--cyan); font-family: 'Orbitron', sans-serif; font-size: .7rem; letter-spacing: .2em; text-transform: uppercase; }
+h1, h2, p { margin-top: 0; }
+h1, h2 { font-family: 'Orbitron', sans-serif; line-height: 1.1; }
+h1 { margin-bottom: 18px; font-size: clamp(2.7rem, 9vw, 4.6rem); letter-spacing: -.055em; text-transform: uppercase; text-shadow: 0 0 24px rgba(54, 245, 240, .2); }
+h1 span, .accent { color: var(--pink); }
+h2 { margin-bottom: 24px; font-size: clamp(2.1rem, 7vw, 3.2rem); }
+.intro { max-width: 330px; margin: 0 auto 28px; color: var(--muted); font-size: 1.2rem; }
+#start-form { display: grid; gap: 10px; text-align: left; }
+#start-form label { color: var(--muted); font-size: .95rem; }
+#player-name { width: 100%; min-height: 50px; padding: 0 14px; border: 1px solid var(--line); border-radius: 9px; background: #090e19; color: var(--white); outline: none; }
+#player-name:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(54, 245, 240, .15); }
+#player-name::placeholder { color: #657189; }
+.error { min-height: 19px; color: #ff8abc; font-size: .9rem; }
+.btn { display: inline-flex; min-height: 50px; align-items: center; justify-content: center; gap: 12px; padding: 0 20px; border: 0; border-radius: 9px; cursor: pointer; font-family: 'Orbitron', sans-serif; font-size: .82rem; font-weight: 700; letter-spacing: .04em; transition: transform .18s, box-shadow .18s, background .18s; }
+.btn:hover { transform: translateY(-2px); }
+.btn:focus-visible, .setting-button:focus-visible, .pause-button:focus-visible { outline: 3px solid var(--yellow); outline-offset: 3px; }
+.btn-primary { background: var(--cyan); color: #071014; box-shadow: 0 0 24px rgba(54, 245, 240, .18); }
+.btn-primary:hover { background: #8bfffb; box-shadow: 0 0 30px rgba(54, 245, 240, .32); }
+.btn-secondary { border: 1px solid var(--line); background: transparent; color: var(--white); }
+.settings { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
+.setting-button { padding: 8px 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; font-size: .9rem; }
+.setting-button[aria-pressed="true"] { border-color: var(--cyan); color: var(--cyan); }
+.controls-note, .game-controls { margin: 20px 0 0; color: #7e8ba2; font-size: .92rem; }
+
+.game-heading { display: flex; width: min(400px, calc(100vw - 40px)); justify-content: space-between; align-items: center; margin: 0 auto 12px; font-family: 'Orbitron', sans-serif; font-size: .76rem; letter-spacing: .12em; }
+.game-brand { color: var(--cyan); }
+.driver-label { color: var(--muted); }
+.game-wrap { position: relative; width: min(400px, calc(100vw - 40px)); }
+#game-canvas { display: block; width: 100%; height: auto; aspect-ratio: 9 / 16; border: 1px solid rgba(54, 245, 240, .65); border-radius: 15px; background: #101621; box-shadow: 0 0 35px rgba(54, 245, 240, .13); }
+.game-hud { position: absolute; inset: 12px 12px auto; display: flex; align-items: flex-start; justify-content: space-between; pointer-events: none; }
+.score-label { display: grid; gap: 1px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(8, 11, 20, .78); color: var(--muted); font-family: 'Orbitron', sans-serif; font-size: .6rem; letter-spacing: .12em; }
+.score-label strong { color: var(--yellow); font-size: 1.15rem; }
+.pause-button { width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 9px; background: rgba(8, 11, 20, .82); color: var(--cyan); cursor: pointer; font-size: 1rem; pointer-events: auto; }
+.pause-overlay { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 15px; background: rgba(4, 7, 14, .76); }
+.pause-overlay[aria-hidden="true"] { display: none; }
+.pause-card { width: min(88%, 340px); padding: 32px 24px; }
+.pause-card h2 { margin-bottom: 22px; }
+.game-controls { max-width: 380px; text-align: center; }
+.result-card h2 { margin-bottom: 22px; }
+.result-score { margin-bottom: 6px; color: var(--cyan); font-family: 'Orbitron', sans-serif; font-size: 1.3rem; }
+.result-best { margin-bottom: 24px; color: var(--muted); font-size: 1.1rem; }
+.result-actions { display: grid; gap: 10px; }
+
+@media (max-height: 760px) and (min-width: 600px) {
+  #game-screen { justify-content: flex-start; padding-block: 14px; }
+  .game-wrap { width: min(350px, calc((100vh - 130px) * .5625)); }
+  .game-controls { margin-top: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

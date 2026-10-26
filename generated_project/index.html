@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080b14">
+  <title>Neon Drift Racer</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <div class="city-glow" aria-hidden="true"></div>
+
+  <main>
+    <section id="start-screen" class="screen active" aria-labelledby="game-title">
+      <div class="start-card">
+        <p class="eyebrow">A tiny arcade challenge</p>
+        <h1 id="game-title">Neon <span>Drift</span><br>Racer</h1>
+        <p class="intro">Weave through traffic, stay on the road, and beat your best distance.</p>
+        <form id="start-form" novalidate>
+          <label for="player-name">Driver name</label>
+          <input type="text" id="player-name" maxlength="12" placeholder="Enter your name" autocomplete="nickname" aria-describedby="name-error">
+          <span id="name-error" class="error" aria-live="polite"></span>
+          <button id="play-button" type="submit" class="btn btn-primary">Start driving <span aria-hidden="true">→</span></button>
+        </form>
+        <div class="settings">
+          <button id="sound-toggle" class="setting-button" type="button" aria-pressed="false">Sound: Off</button>
+          <button id="motion-toggle" class="setting-button" type="button" aria-pressed="false">Reduced motion: Off</button>
+        </div>
+        <p class="controls-note">Controls: ← → or A / D · Space to pause</p>
+      </div>
+    </section>
+
+    <section id="game-screen" class="screen" aria-label="Game" aria-hidden="true">
+      <div class="game-heading">
+        <span class="game-brand">NEON DRIFT</span>
+        <span id="driver-label" class="driver-label"></span>
+      </div>
+      <div class="game-wrap">
+        <canvas id="game-canvas" aria-label="Three-lane road. Use left and right arrow keys to steer."></canvas>
+        <div id="ui-overlay" class="game-hud">
+          <span class="score-label">DISTANCE <strong id="score" aria-live="polite">0</strong></span>
+          <button id="pause-button" class="pause-button" type="button" aria-label="Pause game">Ⅱ</button>
+        </div>
+        <div id="pause-overlay" class="pause-overlay" aria-hidden="true">
+          <div class="pause-card">
+            <p class="eyebrow">Take a breather</p>
+            <h2>Paused</h2>
+            <button id="resume-button" class="btn btn-primary" type="button">Keep driving</button>
+          </div>
+        </div>
+      </div>
+      <p class="game-controls">Steer with ← → or A / D · Space to pause · Swipe on touch screens</p>
+    </section>
+
+    <section id="game-over" class="screen" aria-labelledby="game-over-title" aria-hidden="true">
+      <div class="start-card result-card">
+        <p class="eyebrow">Run complete</p>
+        <h2 id="game-over-title">Nice drive<span class="accent">.</span></h2>
+        <p id="final-score" class="result-score"></p>
+        <p id="high-score" class="result-best"></p>
+        <div class="result-actions">
+          <button id="restart-button" class="btn btn-primary" type="button">Race again</button>
+          <button id="back-button" class="btn btn-secondary" type="button">Change driver</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
