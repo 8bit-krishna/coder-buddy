@@ -16,7 +16,7 @@ from agent.prompts import (
     planner_prompt,
     coder_system_prompt,
 )
-from agent.states import Plan, TaskPlan
+from agent.states import ImplementationStep, Plan, TaskPlan
 from agent.tools import (
     read_file,
     safe_path_for_project,
@@ -72,42 +72,65 @@ def invoke_with_rate_limit_retry(runnable, prompt, stage: str, max_attempts: int
         try:
             return runnable.invoke(prompt)
         except Exception as exc:
-            if getattr(exc, "status_code", None) != 429:
+            if getattr(exc, "status_code", None) == 429:
+                if attempt == max_attempts:
+                    raise GroqRateLimitRetriesExhausted(
+                        f"{stage} hit Groq's rate limit {max_attempts} times. "
+                        "Wait for the token-per-minute window to clear, then "
+                        "run the prompt again."
+                    ) from exc
+
+                delay = 0.0
+                response = getattr(exc, "response", None)
+                headers = getattr(response, "headers", {})
+                retry_after = headers.get("retry-after") if headers else None
+                if retry_after is not None:
+                    try:
+                        delay = float(retry_after)
+                    except (TypeError, ValueError):
+                        delay = 0.0
+
+                if delay <= 0:
+                    match = re.search(
+                        r"try again in ([0-9.]+)s", str(exc), re.IGNORECASE
+                    )
+                    if match:
+                        delay = float(match.group(1))
+
+                # A short provider hint can still be too brief for a busy
+                # TPM window. Increase the wait after repeated 429s.
+                delay = max(delay, min(2 ** attempt, 30))
+                delay = min(max(delay, 0.5), 60)
+                print(
+                    f"[{stage}] Groq rate limit reached; retrying in "
+                    f"{delay:.1f} seconds (attempt {attempt + 1}/{max_attempts})."
+                )
+                time.sleep(delay + 0.25)
+                continue
+
+            connection_error_names = {
+                "APIConnectionError",
+                "ConnectError",
+                "ConnectTimeout",
+                "ReadError",
+                "ReadTimeout",
+                "RemoteProtocolError",
+                "TimeoutException",
+            }
+            is_connection_error = isinstance(exc, (ConnectionError, TimeoutError)) or any(
+                cls.__name__ in connection_error_names
+                for cls in type(exc).__mro__
+            )
+            if not is_connection_error:
                 raise
             if attempt == max_attempts:
-                raise GroqRateLimitRetriesExhausted(
-                    f"{stage} hit Groq's rate limit {max_attempts} times. "
-                    "Wait for the token-per-minute window to clear, then run "
-                    "the prompt again."
-                ) from exc
-
-            delay = 0.0
-            response = getattr(exc, "response", None)
-            headers = getattr(response, "headers", {})
-            retry_after = headers.get("retry-after") if headers else None
-            if retry_after is not None:
-                try:
-                    delay = float(retry_after)
-                except (TypeError, ValueError):
-                    delay = 0.0
-
-            if delay <= 0:
-                match = re.search(
-                    r"try again in ([0-9.]+)s", str(exc), re.IGNORECASE
-                )
-                if match:
-                    delay = float(match.group(1))
-
-            # A short provider hint can still be too brief for a busy TPM
-            # window. Increase the wait on each repeat instead of hammering
-            # the same request every couple of seconds.
-            delay = max(delay, min(2 ** attempt, 30))
-            delay = min(max(delay, 0.5), 60)
+                raise
+            delay = min(2 ** (attempt - 1), 10)
             print(
-                f"[{stage}] Groq rate limit reached; retrying in "
-                f"{delay:.1f} seconds (attempt {attempt + 1}/{max_attempts})."
+                f"[{stage}] Connection failed; retrying in {delay:.1f} "
+                f"seconds (attempt {attempt + 1}/{max_attempts})."
             )
-            time.sleep(delay + 0.25)
+            time.sleep(delay)
 
 
 # ==================================================
@@ -230,6 +253,7 @@ def planner_agent(state: WorkflowState) -> dict:
 # ==================================================
 
 def architect_agent(state: WorkflowState) -> dict:
+    """Build deterministic file tasks without spending another Groq call."""
     plan = state.get("plan")
 
     if plan is None:
@@ -246,123 +270,44 @@ def architect_agent(state: WorkflowState) -> dict:
     if not expected_files:
         raise ValueError("The project plan contains no files.")
 
-    prompt = f"""
-You are a senior software architect.
-
-Convert the project plan into implementation steps.
-
-PROJECT PLAN:
-{json.dumps(plan_data, ensure_ascii=False)}
-
-Return ONLY a valid JSON object in this format:
-{{
-  "plan": null,
-  "implementation_steps": [
-    {{
-      "filepath": "index.html",
-      "task_description": "Detailed implementation instructions for this file."
-    }}
-  ]
-}}
-
-RULES:
-- Create exactly one step for every requested file.
-- Use exactly these filenames:
-{json.dumps(expected_files)}
-- Every step must contain filepath and task_description.
-- Each step must be a separate JSON object.
-- Do not rename files or add extra files.
-- Keep all HTML, CSS and JavaScript references consistent.
-- Return valid JSON only, without Markdown fences or commentary.
-"""
-
-    last_error = None
-
-    for attempt in range(1, 4):
-        try:
-            print(
-                f"\n[Architect] Creating implementation plan "
-                f"(attempt {attempt}/3)..."
+    plan_model = Plan.model_validate(plan_data)
+    file_guidance = {
+        ".html": "Create semantic, accessible page structure and link the listed CSS and JavaScript files using correct relative paths.",
+        ".css": "Style the listed pages and controls consistently, responsively, and with accessible focus states.",
+        ".js": "Implement the requested interactions and connect them to the HTML elements and data files listed in the plan.",
+        ".json": "Provide valid JSON data or configuration that matches the project requirements; do not include comments.",
+        ".md": "Document the project purpose, features, and clear setup or usage instructions where appropriate.",
+        ".svg": "Create a valid, self-contained SVG illustration or icon suited to the project's visual design.",
+    }
+    steps = []
+    for filepath in expected_files:
+        safe_path_for_project(filepath)
+        extension = Path(filepath).suffix.lower()
+        guidance = file_guidance.get(
+            extension,
+            "Implement the complete UTF-8 text contents appropriate for this file and its role in the project.",
+        )
+        steps.append(
+            ImplementationStep(
+                filepath=filepath,
+                task_description=(
+                    f"Implement {filepath} as part of the project described in "
+                    "the project plan. Follow all requirements in the plan and "
+                    f"keep references consistent across files. {guidance}"
+                ),
             )
+        )
 
-            response = invoke_with_rate_limit_retry(llm, prompt, "Architect")
-            raw = response.content
+    task_plan = TaskPlan(plan=plan_model, implementation_steps=steps)
+    print("\n[Architect] Prepared implementation steps locally:")
+    for number, step in enumerate(task_plan.implementation_steps, start=1):
+        print(f"  {number}. {step.filepath}")
 
-            if isinstance(raw, list):
-                raw = "".join(
-                    item.get("text", "")
-                    for item in raw
-                    if isinstance(item, dict)
-                    and item.get("type") == "text"
-                )
-
-            if not isinstance(raw, str) or not raw.strip():
-                raise ValueError("The architect returned an empty response.")
-
-            raw = raw.strip()
-
-            if raw.startswith("```"):
-                lines = raw.splitlines()[1:]
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                raw = "\n".join(lines).strip()
-
-            data = json.loads(raw)
-            task_plan = TaskPlan.model_validate(data)
-
-            steps = task_plan.implementation_steps
-            actual_files = [step.filepath for step in steps]
-
-            if not steps:
-                raise ValueError("The architect returned no implementation steps.")
-
-            if (
-                len(actual_files) != len(expected_files)
-                or set(actual_files) != set(expected_files)
-            ):
-                raise ValueError(
-                    f"Expected files {expected_files}; received {actual_files}."
-                )
-
-            for filepath in actual_files:
-                safe_path_for_project(filepath)
-
-            step_by_path = {step.filepath: step for step in steps}
-
-            task_plan.implementation_steps = [
-                step_by_path[filepath] for filepath in expected_files
-            ]
-
-            print("[Architect] Implementation steps:")
-            for number, step in enumerate(
-                task_plan.implementation_steps, start=1
-            ):
-                print(f"  {number}. {step.filepath}")
-
-            return {
-                "task_plan": task_plan,
-                "current_step_idx": 0,
-                "done": False,
-            }
-
-        except Exception as exc:
-            if isinstance(exc, GroqRateLimitRetriesExhausted):
-                raise
-            last_error = exc
-            print(f"[Architect] Attempt {attempt}/3 failed: {exc}")
-
-            prompt += f"""
-
-The previous response failed validation:
-{exc}
-
-Try again. Return one complete valid JSON object.
-Use exactly the requested filenames and separate steps.
-"""
-
-    raise RuntimeError(
-        f"Architect failed after 3 attempts. Last error: {last_error}"
-    )
+    return {
+        "task_plan": task_plan,
+        "current_step_idx": 0,
+        "done": False,
+    }
 
 
 # ==================================================
